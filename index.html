@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>우리 가족보드</title>
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-database-compat.js"></script>
+<!-- 가족 공유 보드 앱 -->
+<style>
+  :root{
+    --paper:#F6F2E9;
+    --ink:#2E3A2F;
+    --sage:#5C7A5E;
+    --sage-dark:#3F5941;
+    --mustard:#D9A441;
+    --coral:#D9704F;
+    --blue:#3468C0;
+    --blue-bg:#E9F0FB;
+    --line:#D8D0BC;
+    --card:#FFFDF8;
+    --shadow: 0 2px 8px rgba(46,58,47,0.08);
+  }
+  *{box-sizing:border-box;}
+  .fb-root{
+    font-family:'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    min-height:100%;
+    padding:0 0 90px 0;
+    max-width:480px;
+    margin:0 auto;
+    position:relative;
+  }
+  .fb-header{
+    padding:20px 18px 14px;
+    border-bottom:2px dashed var(--line);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .fb-title{
+    font-family:Georgia,'Nanum Myeongjo',serif;
+    font-size:22px; font-weight:700; color:var(--sage-dark);
+    letter-spacing:-0.3px;
+  }
+  .fb-title span{color:var(--coral);}
+  .fb-user-select{
+    font-size:13px; padding:6px 10px; border-radius:20px;
+    background:var(--card); border:1.5px solid var(--sage);
+    color:var(--sage-dark); font-weight:600;
+  }
+  .fb-tabs{
+    display:flex; gap:6px; padding:12px 14px 0; overflow-x:auto;
+  }
+  .fb-tab{
+    position:relative;
+    flex:0 0 auto; padding:8px 14px; border-radius:14px 14px 0 0;
+    background:var(--line); color:var(--ink); font-size:13px; font-weight:600;
+    cursor:pointer; opacity:0.6; white-space:nowrap;
+    border:none;
+  }
+  .fb-tab.active{ background:var(--card); opacity:1; box-shadow:var(--shadow); color:var(--sage-dark); }
+  .fb-new{
+    position:absolute; top:-9px; right:-6px;
+    background:var(--coral); color:#fff; font-size:9px; font-weight:800;
+    padding:2px 5px 2px 4px; border-radius:8px; line-height:1.3;
+    box-shadow:0 1px 3px rgba(0,0,0,0.25);
+  }
+  .fb-panel{ padding:16px; }
+  .fb-hidden{ display:none; }
+
+  .fb-card{
+    background:var(--card); border-radius:14px; padding:14px 16px;
+    box-shadow:var(--shadow); margin-bottom:10px; border:1px solid var(--line);
+  }
+  .fb-row{ display:flex; align-items:center; gap:10px; }
+  .fb-check{
+    width:26px; height:26px; border-radius:50%; border:2px solid var(--sage);
+    flex:0 0 26px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:14px; background:var(--card);
+  }
+  .fb-check.done{ background:var(--sage); color:#fff; }
+  .fb-item-title{ font-size:15px; font-weight:600; flex:1; }
+  .fb-item-title.done{ text-decoration:line-through; opacity:0.5; }
+  .fb-meta{ font-size:12px; color:#8A8270; margin-top:3px; }
+  .fb-pts{ font-size:12px; font-weight:700; color:var(--mustard); background:#FBF0DA; padding:3px 8px; border-radius:10px; }
+  .fb-del{ font-size:16px; color:#C9BFA6; background:none; border:none; padding:4px; cursor:pointer; }
+
+  .fb-add-bar{ display:flex; gap:8px; margin-bottom:14px; }
+  .fb-input{
+    flex:1; padding:10px 12px; border-radius:10px; border:1.5px solid var(--line);
+    background:var(--card); font-size:14px;
+  }
+  .fb-num{ width:64px; padding:10px 8px; border-radius:10px; border:1.5px solid var(--line); font-size:14px; }
+  .fb-btn{
+    padding:10px 16px; border-radius:10px; border:none; background:var(--sage);
+    color:#fff; font-weight:700; font-size:14px; cursor:pointer;
+  }
+  .fb-btn.coral{ background:var(--coral); }
+  .fb-btn.small{ padding:6px 12px; font-size:12px; }
+  .fb-btn:disabled{ opacity:0.4; cursor:default; }
+
+  .fb-subtoggle{ display:flex; gap:8px; margin-bottom:14px; overflow-x:auto; }
+  .fb-subtoggle button{
+    flex:0 0 auto; padding:8px 14px; border-radius:10px; border:1.5px solid var(--sage);
+    background:var(--card); color:var(--sage-dark); font-weight:700; font-size:13px; cursor:pointer;
+    white-space:nowrap;
+  }
+  .fb-subtoggle button.on{ background:var(--sage); color:#fff; }
+
+  .fb-empty{ text-align:center; padding:30px 10px; color:#A79E86; font-size:13px; }
+  .fb-progress-bg{ background:var(--line); border-radius:8px; height:8px; margin-top:8px; overflow:hidden; }
+  .fb-progress-fill{ background:var(--mustard); height:100%; border-radius:8px; }
+
+  .fb-note-card.overdue{ border-color:var(--coral); background:#FFF3EF; }
+  .fb-note-date{ font-size:12px; font-weight:700; }
+  .fb-note-date.overdue{ color:var(--coral); }
+  .fb-note-date.ok{ color:var(--sage-dark); }
+
+  .fb-loading{ text-align:center; padding:60px 20px; color:#A79E86; font-size:13px; }
+  .fb-section-label{ font-size:12px; font-weight:700; color:#8A8270; margin:4px 0 8px; text-transform:uppercase; letter-spacing:0.5px; }
+
+  /* 용돈미션 전용 */
+  .fb-point-info-wrap{ position:relative; margin-bottom:12px; }
+  .fb-point-info-btn{ width:100%; background:#FBF0DA; border:1.5px solid var(--mustard); color:#8A6A1F; font-weight:700; font-size:13px; padding:10px; border-radius:10px; cursor:pointer; }
+  .fb-point-popup{
+    position:absolute; top:calc(100% + 6px); left:0; right:0; z-index:10;
+    background:var(--ink); color:#fff; border-radius:10px; padding:12px 14px;
+    font-size:12px; line-height:1.9; box-shadow:0 6px 16px rgba(0,0,0,0.25);
+  }
+  .fb-month-nav{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .fb-month-nav button{ background:var(--card); border:1.5px solid var(--sage); color:var(--sage-dark); width:36px; height:36px; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer; }
+  .fb-month-label{ font-family:Georgia,serif; font-size:17px; font-weight:700; color:var(--sage-dark); }
+  .fb-kids-summary{ display:flex; gap:10px; margin-bottom:14px; }
+  .fb-kid-card{ flex:1; background:var(--card); border-radius:14px; padding:12px; box-shadow:var(--shadow); border:1px solid var(--line); }
+  .fb-kid-name{ font-weight:800; font-size:14px; color:var(--sage-dark); margin-bottom:4px; }
+  .fb-kid-stat{ font-size:12px; color:#8A8270; margin-top:2px; }
+  .fb-kid-stat b{ color:var(--ink); }
+  .fb-day-chips{ display:flex; gap:6px; overflow-x:auto; padding-bottom:8px; margin-bottom:12px; }
+  .fb-day-chip{ flex:0 0 auto; width:44px; padding:6px 0; border-radius:10px; border:1.5px solid var(--line); background:var(--card); text-align:center; font-size:12px; font-weight:700; cursor:pointer; }
+  .fb-day-chip .dow{ display:block; font-size:9px; font-weight:500; color:#A79E86; }
+  .fb-day-chip.on{ background:var(--sage); border-color:var(--sage); color:#fff; }
+  .fb-day-chip.on .dow{ color:#E4EDE4; }
+  .fb-day-chip.today{ border-color:var(--coral); }
+  .fb-mission-row{ display:flex; align-items:center; gap:10px; }
+  .fb-mission-title{ flex:1; font-size:14px; font-weight:600; }
+  .fb-child-circles{ display:flex; gap:8px; }
+  .fb-circle{ width:34px; height:34px; border-radius:50%; border:2px solid var(--blue); background:var(--blue-bg); color:var(--blue); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; cursor:pointer; }
+  .fb-circle.done{ background:var(--blue); color:#fff; }
+  .fb-history-row{ display:flex; justify-content:space-between; font-size:12px; padding:6px 0; border-bottom:1px solid var(--line); }
+</style>
+</head>
+<body>
+
+<div id="fb-app" class="fb-root">
+  <div class="fb-loading">불러오는 중…</div>
+</div>
+
+<script>
+(function(){
+  const TABS = [
+    {key:'allowance', label:'💰 용돈미션'},
+    {key:'bucket', label:'🗺️ 버킷리스트'},
+    {key:'goal', label:'🎯 목표'},
+    {key:'diary', label:'📝 한줄일기'},
+    {key:'note', label:'📌 메모'},
+  ];
+  const CHILDREN = ['은','린'];
+  const WRITERS = ['아빠','엄마','은','린'];
+  const DEFAULT_MISSIONS = [
+    '학교, 학원 숙제 완료',
+    '각자 방 바닥 및 책상 정리',
+    '거실 바닥 및 식탁, 테이블 정리',
+    '빨래 정리',
+    '짜증 내는 말투 사용하지 않기',
+    '언니, 동생과 싸우지 않기 (때리기 금지)',
+    '밥 먹은 자리 닦고 그릇 물 받아두기',
+    '"사랑해" 안아주기',
+    '한줄일기 쓰기',
+  ];
+  const DOW = ['일','월','화','수','목','금','토'];
+
+  let state = {
+    me: null,
+    members: [],
+    activeTab: 'allowance',
+    meta: {},
+    lastSeen: {},
+    diaryFilter: '전체',
+    showPointInfo: false,
+    goalView: null,
+    goalViewMonth: null,
+    goalViewDate: null,
+    goalChecks: {},
+    viewingMonth: null, // 'YYYY-MM'
+    viewingDate: null,  // 'YYYY-MM-DD'
+    allowance: { missionDefs: [], dailyChecks: {}, balance:{}, redeemedTotal:{}, redeemHistory:[] },
+    bucketList: [],
+    goals: [],
+    diary: [],
+    notes: [],
+  };
+
+  const root = document.getElementById('fb-app');
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  const todayStr = () => new Date().toISOString().slice(0,10);
+  const monthOf = (dateStr) => dateStr.slice(0,7);
+
+  // ---------- Firebase 연결 ----------
+  const firebaseConfig = {
+    apiKey: "AIzaSyDeuFDeArSEcaH1WUHI-uX5wbXmD6esugs",
+    authDomain: "family-board-ce4f0.firebaseapp.com",
+    databaseURL: "https://family-board-ce4f0-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "family-board-ce4f0",
+    storageBucket: "family-board-ce4f0.firebasestorage.app",
+    messagingSenderId: "862700682309",
+    appId: "1:862700682309:web:b3fd1f2f758db197e1372c"
+  };
+  const SECRET_PATH = 'fb9x2k7q4z1m'; // 보안규칙에서 허용한 비밀 경로
+  firebase.initializeApp(firebaseConfig);
+  const dbRef = firebase.database().ref(SECRET_PATH + '/family-board-data');
+
+  async function saveShared(value){
+    try{ await dbRef.set(value); }catch(e){ console.error('저장 실패:', e); }
+  }
+  // 개인(폰 로컬) 데이터 — 계정 없이 이 기기에만 남는 값 (이름, 안 읽은 알림 등)
+  function loadPersonalSync(key, fallback){
+    try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+    catch(e){ return fallback; }
+  }
+  function savePersonalSync(key, value){
+    try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){ console.error(e); }
+  }
+
+  function applySharedData(data){
+    data = data || {};
+    state.members = data.members || [];
+    state.meta = data.meta || {};
+    if(data.bucketList){
+      state.bucketList = data.bucketList;
+    } else if(data.bucketLists){
+      // 이전 버전(카테고리별) 데이터를 하나의 가족 리스트로 통합
+      const merged = [];
+      Object.values(data.bucketLists).forEach(arr=>{ (arr||[]).forEach(item=>merged.push(item)); });
+      state.bucketList = merged;
+    } else {
+      state.bucketList = [];
+    }
+    state.goals = data.goals || [];
+    state.goalChecks = data.goalChecks || {};
+    state.diary = data.diary || [];
+    state.notes = data.notes || [];
+    state.allowance = data.allowance || { missionDefs: [], dailyChecks:{}, balance:{}, redeemedTotal:{}, redeemHistory:[] };
+    if(!state.allowance.missionDefs || !state.allowance.missionDefs.length){
+      state.allowance.missionDefs = DEFAULT_MISSIONS.map(t=>({id:uid(), title:t}));
+    }
+    CHILDREN.forEach(c=>{
+      if(state.allowance.balance[c]===undefined) state.allowance.balance[c]=0;
+      if(state.allowance.redeemedTotal[c]===undefined) state.allowance.redeemedTotal[c]=0;
+    });
+  }
+
+  let firstLoad = true;
+  function loadAll(){
+    state.me = loadPersonalSync('family-board-me', null);
+    state.lastSeen = loadPersonalSync('family-board-lastseen', {});
+    const t = todayStr();
+    state.viewingMonth = monthOf(t);
+    state.viewingDate = t;
+    state.goalViewMonth = monthOf(t);
+    state.goalViewDate = t;
+    // Firebase 실시간 리스너: 가족 중 누구든 데이터가 바뀌면 즉시 이 화면에도 반영됨
+    dbRef.on('value', (snapshot)=>{
+      applySharedData(snapshot.val());
+      render();
+      firstLoad = false;
+    }, (err)=>{
+      console.error('불러오기 실패:', err);
+      if(firstLoad){ applySharedData(null); render(); firstLoad = false; }
+    });
+  }
+
+  async function persist(){
+    await saveShared({
+      members: state.members, meta: state.meta, bucketList: state.bucketList,
+      goals: state.goals, goalChecks: state.goalChecks, diary: state.diary, notes: state.notes, allowance: state.allowance,
+    });
+  }
+  function touch(tab){ state.meta[tab] = Date.now(); }
+  function markSeen(tab){
+    state.lastSeen[tab] = Date.now();
+    savePersonalSync('family-board-lastseen', state.lastSeen);
+  }
+
+  // ---------- 렌더 ----------
+  function render(){
+    if(!state.me){
+      root.innerHTML = renderNamePrompt();
+      bindNamePrompt();
+      return;
+    }
+    root.innerHTML = `
+      <div class="fb-header">
+        <div class="fb-title">우리 <span>가족보드</span></div>
+        <select class="fb-user-select" id="fb-switch-user"></select>
+      </div>
+      <div class="fb-tabs">${TABS.map(t=>{
+        const isNew = (state.meta[t.key]||0) > (state.lastSeen[t.key]||0);
+        return `<button class="fb-tab ${state.activeTab===t.key?'active':''}" data-tab="${t.key}">${t.label}${isNew?'<span class="fb-new">★NEW</span>':''}</button>`;
+      }).join('')}</div>
+      <div class="fb-panel" id="fb-panel"></div>
+    `;
+    const sel = document.getElementById('fb-switch-user');
+    sel.innerHTML = state.members.map(m=>`<option value="${m}" ${m===state.me?'selected':''}>${m}</option>`).join('') + `<option value="__new__">+ 새 가족구성원</option>`;
+    sel.onchange = async (e)=>{
+      if(e.target.value === '__new__'){
+        const name = prompt('새 가족 구성원 이름을 입력하세요');
+        if(name && name.trim()){
+          const n = name.trim();
+          if(!state.members.includes(n)) state.members.push(n);
+          state.me = n;
+          savePersonalSync('family-board-me', n);
+          await persist();
+        }
+      } else {
+        state.me = e.target.value;
+        savePersonalSync('family-board-me', state.me);
+      }
+      render();
+    };
+    document.querySelectorAll('.fb-tab').forEach(btn=>{
+      btn.onclick = async ()=>{
+        state.activeTab = btn.dataset.tab;
+        await markSeen(state.activeTab);
+        render();
+      };
+    });
+    // 최초 진입 시 현재 탭도 확인 처리
+    markSeen(state.activeTab);
+
+    const panel = document.getElementById('fb-panel');
+    if(state.activeTab==='allowance') panel.innerHTML = renderAllowance();
+    if(state.activeTab==='bucket') panel.innerHTML = renderBucket();
+    if(state.activeTab==='goal') panel.innerHTML = renderGoal();
+    if(state.activeTab==='diary') panel.innerHTML = renderDiary();
+    if(state.activeTab==='note') panel.innerHTML = renderNote();
+    bindPanel();
+  }
+
+  function renderNamePrompt(){
+    return `
+      <div style="padding:60px 24px; text-align:center;">
+        <div style="font-family:Georgia,serif; font-size:22px; font-weight:700; color:var(--sage-dark); margin-bottom:8px;">우리 가족보드</div>
+        <div style="font-size:13px; color:#8A8270; margin-bottom:24px;">이 폰의 사용자를 알려주세요</div>
+        <input id="fb-name-input" class="fb-input" placeholder="이름 입력 (예: 아빠, 엄마, 은, 린)" style="text-align:center; margin-bottom:12px;"/>
+        <button id="fb-name-go" class="fb-btn" style="width:100%;">시작하기</button>
+      </div>
+    `;
+  }
+  function bindNamePrompt(){
+    document.getElementById('fb-name-go').onclick = async ()=>{
+      const v = document.getElementById('fb-name-input').value.trim();
+      if(!v) return;
+      if(!state.members.includes(v)) state.members.push(v);
+      state.me = v;
+      savePersonalSync('family-board-me', v);
+      await persist();
+      render();
+    };
+  }
+
+  // ---------- 용돈 미션 ----------
+  function calcPayout(points){
+    if(points < 50) return {payout:0, remainder:points};
+    let remaining = points, payout = 2000;
+    remaining -= 50;
+    while(remaining >= 50){ payout += 5000; remaining -= 50; }
+    return {payout, remainder:remaining};
+  }
+  function monthlyEarned(child, month){
+    let sum = 0;
+    Object.keys(state.allowance.dailyChecks).forEach(d=>{
+      if(monthOf(d)!==month) return;
+      const day = state.allowance.dailyChecks[d];
+      Object.values(day).forEach(pair=>{ if(pair && pair[child]) sum += 2; });
+    });
+    return sum;
+  }
+  function renderAllowance(){
+    const [y,m] = state.viewingMonth.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const dayChips = [];
+    for(let d=1; d<=daysInMonth; d++){
+      const ds = state.viewingMonth + '-' + String(d).padStart(2,'0');
+      const dow = DOW[new Date(y, m-1, d).getDay()];
+      dayChips.push({ds, d, dow});
+    }
+    const selDay = state.allowance.dailyChecks[state.viewingDate] || {};
+    return `
+      <div class="fb-point-info-wrap">
+        <button class="fb-point-info-btn" id="fb-point-info-btn">💰 포인트 → 금액 안내</button>
+        ${state.showPointInfo? `
+          <div class="fb-point-popup">
+            <div>50P = 2,000원</div>
+            <div>100P = 5,000원</div>
+            <div>이후 50P당 5,000원씩 추가 지급</div>
+          </div>` : ''}
+      </div>
+      <div class="fb-month-nav">
+        <button data-month="-1">◀</button>
+        <div class="fb-month-label">${y}년 ${m}월</div>
+        <button data-month="1">▶</button>
+      </div>
+      <div class="fb-kids-summary">
+        ${CHILDREN.map(c=>{
+          const earned = monthlyEarned(c, state.viewingMonth);
+          const bal = state.allowance.balance[c];
+          const {payout} = calcPayout(bal);
+          return `
+          <div class="fb-kid-card">
+            <div class="fb-kid-name">${c}</div>
+            <div class="fb-kid-stat">이번 달 획득 <b>${earned}P</b></div>
+            <div class="fb-kid-stat">미정산 <b>${bal}P</b></div>
+            <div class="fb-kid-stat">누적 지급액 <b>${state.allowance.redeemedTotal[c].toLocaleString()}원</b></div>
+            <button class="fb-btn small" style="margin-top:8px; width:100%;" data-redeem-child="${c}" ${payout<=0?'disabled':''}>${payout>0? `정산하기 (${payout.toLocaleString()}원)` : '정산 가능 포인트 없음'}</button>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="fb-day-chips">
+        ${dayChips.map(dc=>`<div class="fb-day-chip ${dc.ds===state.viewingDate?'on':''} ${dc.ds===todayStr()?'today':''}" data-day="${dc.ds}">${dc.d}<span class="dow">${dc.dow}</span></div>`).join('')}
+      </div>
+      <div class="fb-add-bar">
+        <input class="fb-input" id="fb-mission-title" placeholder="새 미션 항목 추가 (매달 공통 적용)"/>
+        <button class="fb-btn" id="fb-mission-add">추가</button>
+      </div>
+      <div class="fb-section-label">${state.viewingDate} 미션 체크</div>
+      ${state.allowance.missionDefs.map(ms=>{
+        const pair = selDay[ms.id] || {};
+        return `
+        <div class="fb-card">
+          <div class="fb-mission-row">
+            <div class="fb-mission-title">${ms.title}</div>
+            <div class="fb-child-circles">
+              ${CHILDREN.map(c=>`<div class="fb-circle ${pair[c]?'done':''}" data-check="${ms.id}:${c}">${c}</div>`).join('')}
+            </div>
+            <button class="fb-del" data-mission-del="${ms.id}">✕</button>
+          </div>
+        </div>`;
+      }).join('')}
+      <div class="fb-section-label" style="margin-top:18px;">정산 내역</div>
+      ${state.allowance.redeemHistory.length? state.allowance.redeemHistory.slice().reverse().map(h=>`
+        <div class="fb-history-row"><span>${h.child} · ${h.date}</span><span>${h.amount.toLocaleString()}원 (${h.points}P 사용)</span></div>
+      `).join('') : `<div class="fb-empty">정산 내역이 없어요.</div>`}
+    `;
+  }
+
+  // ---------- 버킷리스트 (가족 공동 하나) ----------
+  function renderBucket(){
+    const list = state.bucketList;
+    const total = list.length;
+    const done = list.filter(b=>b.done).length;
+    const pct = total? Math.round(done/total*100) : 0;
+    return `
+      <div class="fb-card" style="margin-bottom:14px;">
+        <div class="fb-row" style="justify-content:space-between;">
+          <div style="font-weight:800; font-size:14px; color:var(--sage-dark);">가족 버킷리스트 진행률</div>
+          <div style="font-weight:800; font-size:14px; color:var(--mustard);">${pct}%</div>
+        </div>
+        <div class="fb-meta">총 ${total}개 중 ${done}개 완료</div>
+        <div class="fb-progress-bg"><div class="fb-progress-fill" style="width:${pct}%;"></div></div>
+      </div>
+      <div class="fb-add-bar">
+        <input class="fb-input" id="fb-bucket-title" placeholder="가족과 해보고 싶은 것 적기"/>
+        <button class="fb-btn" id="fb-bucket-add">추가</button>
+      </div>
+      ${list.length? list.map(b=>`
+        <div class="fb-card">
+          <div class="fb-row">
+            <div class="fb-check ${b.done?'done':''}" data-bucket-check="${b.id}">${b.done?'✓':''}</div>
+            <div style="flex:1;">
+              <div class="fb-item-title ${b.done?'done':''}">${b.title}</div>
+              <div class="fb-meta">작성: ${b.by}${b.done? ' · 완료: '+b.doneBy : ''}</div>
+            </div>
+            <button class="fb-del" data-bucket-del="${b.id}">✕</button>
+          </div>
+        </div>
+      `).join('') : `<div class="fb-empty">아직 목록이 비어있어요. 가족과 하고 싶은 걸 적어보세요!</div>`}
+    `;
+  }
+
+  // ---------- 목표 리스트 (일별 체크 → 월 달성률) ----------
+  function monthlyGoalStats(owner, month){
+    const goals = state.goals.filter(g=>g.owner===owner);
+    const goalCount = goals.length;
+    const [y,m] = month.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const totalPossible = goalCount * daysInMonth;
+    let doneCount = 0;
+    Object.keys(state.goalChecks).forEach(d=>{
+      if(monthOf(d)!==month) return;
+      const dayObj = state.goalChecks[d];
+      goals.forEach(g=>{ if(dayObj[g.id]) doneCount++; });
+    });
+    const pct = totalPossible? Math.round(doneCount/totalPossible*100) : 0;
+    return {goalCount, daysInMonth, totalPossible, doneCount, pct};
+  }
+  function renderGoal(){
+    const [gy,gm] = state.goalViewMonth.split('-').map(Number);
+    const monthNav = `
+      <div class="fb-month-nav">
+        <button data-goal-month="-1">◀</button>
+        <div class="fb-month-label">${gy}년 ${gm}월 달성률</div>
+        <button data-goal-month="1">▶</button>
+      </div>
+    `;
+    if(!state.goalView){
+      return `
+        ${monthNav}
+        ${WRITERS.map(w=>{
+          const s = monthlyGoalStats(w, state.goalViewMonth);
+          return `
+          <div class="fb-card" data-goal-open="${w}" style="cursor:pointer;">
+            <div class="fb-row" style="justify-content:space-between;">
+              <div style="font-weight:800; font-size:15px; color:var(--sage-dark);">${w}의 목표</div>
+              <div style="font-weight:800; font-size:14px; color:var(--mustard);">${s.pct}%</div>
+            </div>
+            <div class="fb-meta">일 목표 ${s.goalCount}개 × ${s.daysInMonth}일 = ${s.totalPossible}개 중 ${s.doneCount}개 완료</div>
+            <div class="fb-progress-bg"><div class="fb-progress-fill" style="width:${s.pct}%;"></div></div>
+          </div>`;
+        }).join('')}
+      `;
+    }
+    const owner = state.goalView;
+    const goals = state.goals.filter(g=>g.owner===owner);
+    const daysInMonth = new Date(gy, gm, 0).getDate();
+    const dayChips = [];
+    for(let d=1; d<=daysInMonth; d++){
+      const ds = state.goalViewMonth + '-' + String(d).padStart(2,'0');
+      const dow = DOW[new Date(gy, gm-1, d).getDay()];
+      dayChips.push({ds, d, dow});
+    }
+    const selDay = state.goalChecks[state.goalViewDate] || {};
+    return `
+      <button class="fb-btn small" id="fb-goal-back" style="margin-bottom:12px;">◀ 전체 보기</button>
+      ${monthNav}
+      <div class="fb-day-chips">
+        ${dayChips.map(dc=>`<div class="fb-day-chip ${dc.ds===state.goalViewDate?'on':''} ${dc.ds===todayStr()?'today':''}" data-goal-day="${dc.ds}">${dc.d}<span class="dow">${dc.dow}</span></div>`).join('')}
+      </div>
+      <div class="fb-section-label">${owner}의 일 목표 (${state.goalViewDate})</div>
+      <div class="fb-add-bar">
+        <input class="fb-input" id="fb-goal-title" placeholder="새 일 목표 추가 (매일 공통 적용)"/>
+        <button class="fb-btn" id="fb-goal-add">추가</button>
+      </div>
+      ${goals.length? goals.map(g=>`
+        <div class="fb-card">
+          <div class="fb-row">
+            <div class="fb-check ${selDay[g.id]?'done':''}" data-goal-check="${g.id}">${selDay[g.id]?'✓':''}</div>
+            <div style="flex:1;">
+              <div class="fb-item-title ${selDay[g.id]?'done':''}">${g.title}</div>
+            </div>
+            <button class="fb-del" data-goal-del="${g.id}">✕</button>
+          </div>
+        </div>
+      `).join('') : `<div class="fb-empty">등록된 일 목표가 없어요.</div>`}
+    `;
+  }
+
+  // ---------- 한줄일기 ----------
+  function renderDiary(){
+    let list = state.diary.slice();
+    if(state.diaryFilter !== '전체') list = list.filter(d=>d.by===state.diaryFilter);
+    list.sort((a,b)=> b.date.localeCompare(a.date) || b.ts-a.ts);
+    return `
+      <div class="fb-card" style="padding:14px;">
+        <div class="fb-row" style="margin-bottom:8px;">
+          <span class="fb-meta" style="margin:0;">작성자</span>
+          <select class="fb-input" id="fb-diary-writer" style="flex:0 0 110px;">${WRITERS.map(w=>`<option ${WRITERS.includes(state.me)&&state.me===w?'selected':''}>${w}</option>`).join('')}</select>
+        </div>
+        <input class="fb-input" id="fb-diary-content" placeholder="오늘 하루 한 줄을 적어보세요" style="width:100%; margin-bottom:8px;"/>
+        <div class="fb-row">
+          <input class="fb-input" id="fb-diary-date" type="date" value="${todayStr()}" style="flex:1;"/>
+          <button class="fb-btn" id="fb-diary-add">남기기</button>
+        </div>
+      </div>
+      <div class="fb-subtoggle">
+        <button class="${state.diaryFilter==='전체'?'on':''}" data-diary-filter="전체">전체보기</button>
+        ${WRITERS.map(m=>`<button class="${state.diaryFilter===m?'on':''}" data-diary-filter="${m}">${m}만 보기</button>`).join('')}
+      </div>
+      ${list.length? list.map(d=>`
+        <div class="fb-card">
+          <div class="fb-row">
+            <div style="flex:1;">
+              <div class="fb-item-title" style="font-weight:500;">"${d.content}"</div>
+              <div class="fb-meta">${d.by} · ${d.date}</div>
+            </div>
+            <button class="fb-del" data-diary-del="${d.id}">✕</button>
+          </div>
+        </div>
+      `).join('') : `<div class="fb-empty">아직 남긴 한 줄이 없어요.</div>`}
+    `;
+  }
+
+  // ---------- 메모/알림 ----------
+  function renderNote(){
+    const today = todayStr();
+    const sorted = state.notes.slice().sort((a,b)=> (a.date||'9999').localeCompare(b.date||'9999'));
+    return `
+      <div class="fb-card" style="padding:14px;">
+        <input class="fb-input" id="fb-note-content" placeholder="메모 내용" style="margin-bottom:8px; width:100%;"/>
+        <div class="fb-row">
+          <input class="fb-input" id="fb-note-date" type="date" style="flex:1;"/>
+          <button class="fb-btn" id="fb-note-add">추가</button>
+        </div>
+      </div>
+      ${sorted.length? sorted.map(n=>{
+        const overdue = n.date && n.date < today;
+        return `
+        <div class="fb-card fb-note-card ${overdue?'overdue':''}">
+          <div class="fb-row">
+            <div style="flex:1;">
+              <div class="fb-item-title">${n.content}</div>
+              <div class="fb-note-date ${overdue?'overdue':'ok'}">${n.date? (overdue? '⚠️ 기한지남 · ' : '📅 ') + n.date : '날짜 미설정'} · ${n.by}</div>
+            </div>
+            <button class="fb-del" data-note-del="${n.id}">✕</button>
+          </div>
+        </div>`;
+      }).join('') : `<div class="fb-empty">등록된 메모가 없어요.</div>`}
+    `;
+  }
+
+  // ---------- 이벤트 바인딩 ----------
+  function bindPanel(){
+    // 용돈미션
+    const infoBtn = document.getElementById('fb-point-info-btn');
+    if(infoBtn) infoBtn.onclick = ()=>{ state.showPointInfo = !state.showPointInfo; render(); };
+    document.querySelectorAll('[data-month]').forEach(el=>{
+      el.onclick = ()=>{
+        const delta = parseInt(el.dataset.month);
+        let [y,m] = state.viewingMonth.split('-').map(Number);
+        m += delta;
+        if(m<1){ m=12; y--; } if(m>12){ m=1; y++; }
+        state.viewingMonth = y+'-'+String(m).padStart(2,'0');
+        const dim = new Date(y,m,0).getDate();
+        const day = Math.min(parseInt(state.viewingDate.slice(8,10)), dim);
+        state.viewingDate = state.viewingMonth+'-'+String(day).padStart(2,'0');
+        render();
+      };
+    });
+    document.querySelectorAll('[data-day]').forEach(el=>{
+      el.onclick = ()=>{ state.viewingDate = el.dataset.day; render(); };
+    });
+    const addM = document.getElementById('fb-mission-add');
+    if(addM) addM.onclick = async ()=>{
+      const t = document.getElementById('fb-mission-title').value.trim();
+      if(!t) return;
+      state.allowance.missionDefs.push({id:uid(), title:t});
+      touch('allowance'); await persist(); render();
+    };
+    document.querySelectorAll('[data-mission-del]').forEach(el=>{
+      el.onclick = async ()=>{
+        state.allowance.missionDefs = state.allowance.missionDefs.filter(x=>x.id!==el.dataset.missionDel);
+        touch('allowance'); await persist(); render();
+      };
+    });
+    document.querySelectorAll('[data-check]').forEach(el=>{
+      el.onclick = async ()=>{
+        const [missionId, child] = el.dataset.check.split(':');
+        const dc = state.allowance.dailyChecks;
+        if(!dc[state.viewingDate]) dc[state.viewingDate] = {};
+        if(!dc[state.viewingDate][missionId]) dc[state.viewingDate][missionId] = {};
+        const cur = !!dc[state.viewingDate][missionId][child];
+        dc[state.viewingDate][missionId][child] = !cur;
+        state.allowance.balance[child] += cur ? -2 : 2;
+        touch('allowance'); await persist(); render();
+      };
+    });
+    document.querySelectorAll('[data-redeem-child]').forEach(el=>{
+      el.onclick = async ()=>{
+        const c = el.dataset.redeemChild;
+        const {payout, remainder} = calcPayout(state.allowance.balance[c]);
+        if(payout<=0) return;
+        const used = state.allowance.balance[c] - remainder;
+        state.allowance.redeemedTotal[c] += payout;
+        state.allowance.balance[c] = remainder;
+        state.allowance.redeemHistory.push({child:c, date:todayStr(), points:used, amount:payout});
+        touch('allowance'); await persist(); render();
+      };
+    });
+
+    // 버킷리스트
+    const addB = document.getElementById('fb-bucket-add');
+    if(addB) addB.onclick = async ()=>{
+      const t = document.getElementById('fb-bucket-title').value.trim();
+      if(!t) return;
+      state.bucketList.push({id:uid(), title:t, done:false, by:state.me});
+      touch('bucket'); await persist(); render();
+    };
+    document.querySelectorAll('[data-bucket-check]').forEach(el=>{
+      el.onclick = async ()=>{
+        const id = el.dataset.bucketCheck;
+        const item = state.bucketList.find(x=>x.id===id);
+        if(item){ item.done = !item.done; item.doneBy = item.done ? state.me : null; }
+        touch('bucket'); await persist(); render();
+      };
+    });
+    document.querySelectorAll('[data-bucket-del]').forEach(el=>{
+      el.onclick = async ()=>{
+        state.bucketList = state.bucketList.filter(x=>x.id!==el.dataset.bucketDel);
+        touch('bucket'); await persist(); render();
+      };
+    });
+
+    // 목표
+    document.querySelectorAll('[data-goal-open]').forEach(el=>{
+      el.onclick = ()=>{ state.goalView = el.dataset.goalOpen; render(); };
+    });
+    const backG = document.getElementById('fb-goal-back');
+    if(backG) backG.onclick = ()=>{ state.goalView = null; render(); };
+    document.querySelectorAll('[data-goal-month]').forEach(el=>{
+      el.onclick = ()=>{
+        const delta = parseInt(el.dataset.goalMonth);
+        let [y,m] = state.goalViewMonth.split('-').map(Number);
+        m += delta;
+        if(m<1){ m=12; y--; } if(m>12){ m=1; y++; }
+        state.goalViewMonth = y+'-'+String(m).padStart(2,'0');
+        const dim = new Date(y,m,0).getDate();
+        const day = Math.min(parseInt(state.goalViewDate.slice(8,10)), dim);
+        state.goalViewDate = state.goalViewMonth+'-'+String(day).padStart(2,'0');
+        render();
+      };
+    });
+    document.querySelectorAll('[data-goal-day]').forEach(el=>{
+      el.onclick = ()=>{ state.goalViewDate = el.dataset.goalDay; render(); };
+    });
+    const addG = document.getElementById('fb-goal-add');
+    if(addG) addG.onclick = async ()=>{
+      const t = document.getElementById('fb-goal-title').value.trim();
+      if(!t) return;
+      state.goals.push({id:uid(), title:t, owner:state.goalView});
+      touch('goal'); await persist(); render();
+    };
+    document.querySelectorAll('[data-goal-check]').forEach(el=>{
+      el.onclick = async ()=>{
+        const id = el.dataset.goalCheck;
+        if(!state.goalChecks[state.goalViewDate]) state.goalChecks[state.goalViewDate] = {};
+        state.goalChecks[state.goalViewDate][id] = !state.goalChecks[state.goalViewDate][id];
+        touch('goal'); await persist(); render();
+      };
+    });
+    document.querySelectorAll('[data-goal-del]').forEach(el=>{
+      el.onclick = async ()=>{
+        state.goals = state.goals.filter(x=>x.id!==el.dataset.goalDel);
+        touch('goal'); await persist(); render();
+      };
+    });
+
+    // 한줄일기
+    document.querySelectorAll('[data-diary-filter]').forEach(el=>{
+      el.onclick = ()=>{ state.diaryFilter = el.dataset.diaryFilter; render(); };
+    });
+    const addD = document.getElementById('fb-diary-add');
+    if(addD) addD.onclick = async ()=>{
+      const t = document.getElementById('fb-diary-content').value.trim();
+      const writer = document.getElementById('fb-diary-writer').value;
+      const d = document.getElementById('fb-diary-date').value || todayStr();
+      if(!t) return;
+      state.diary.push({id:uid(), content:t, by:writer, date:d, ts:Date.now()});
+      touch('diary'); await persist(); render();
+    };
+    document.querySelectorAll('[data-diary-del]').forEach(el=>{
+      el.onclick = async ()=>{
+        state.diary = state.diary.filter(x=>x.id!==el.dataset.diaryDel);
+        touch('diary'); await persist(); render();
+      };
+    });
+
+    // 메모
+    const addN = document.getElementById('fb-note-add');
+    if(addN) addN.onclick = async ()=>{
+      const c = document.getElementById('fb-note-content').value.trim();
+      const d = document.getElementById('fb-note-date').value;
+      if(!c) return;
+      state.notes.push({id:uid(), content:c, date:d, by:state.me});
+      touch('note'); await persist(); render();
+    };
+    document.querySelectorAll('[data-note-del]').forEach(el=>{
+      el.onclick = async ()=>{
+        state.notes = state.notes.filter(x=>x.id!==el.dataset.noteDel);
+        touch('note'); await persist(); render();
+      };
+    });
+  }
+
+  loadAll();
+})();
+</script>
+</body>
+</html>
