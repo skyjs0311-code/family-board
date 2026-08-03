@@ -253,6 +253,10 @@
     if(!state.allowance.missionDefs || !state.allowance.missionDefs.length){
       state.allowance.missionDefs = DEFAULT_MISSIONS.map(t=>({id:uid(), title:t}));
     }
+    if(!state.allowance.dailyChecks) state.allowance.dailyChecks = {};
+    if(!state.allowance.redeemHistory) state.allowance.redeemHistory = [];
+    if(!state.allowance.balance) state.allowance.balance = {};
+    if(!state.allowance.redeemedTotal) state.allowance.redeemedTotal = {};
     CHILDREN.forEach(c=>{
       if(state.allowance.balance[c]===undefined) state.allowance.balance[c]=0;
       if(state.allowance.redeemedTotal[c]===undefined) state.allowance.redeemedTotal[c]=0;
