@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>꿔니 가족보드</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#5C7A5E">
@@ -27,11 +27,16 @@
     --shadow: 0 2px 8px rgba(46,58,47,0.08);
   }
   *{box-sizing:border-box;}
+  html, body{
+    margin:0; padding:0; height:100%;
+    background:#F6F2E9;
+  }
   .fb-root{
     font-family:'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif;
     background:var(--paper);
     color:var(--ink);
-    min-height:100%;
+    min-height:100vh;
+    min-height:100dvh;
     padding:0 0 90px 0;
     max-width:480px;
     margin:0 auto;
