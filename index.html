@@ -3,7 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>우리 가족보드</title>
+<title>꿔니 가족보드</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#5C7A5E">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="꿔니 가족보드">
 <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-database-compat.js"></script>
 <!-- 가족 공유 보드 앱 -->
@@ -186,6 +191,7 @@
     meta: {},
     lastSeen: {},
     diaryFilter: '전체',
+    diaryViewMonth: null,
     showPointInfo: false,
     goalView: null,
     goalViewMonth: null,
@@ -272,6 +278,7 @@
     state.viewingDate = t;
     state.goalViewMonth = monthOf(t);
     state.goalViewDate = t;
+    state.diaryViewMonth = monthOf(t);
     // Firebase 실시간 리스너: 가족 중 누구든 데이터가 바뀌면 즉시 이 화면에도 반영됨
     dbRef.on('value', (snapshot)=>{
       applySharedData(snapshot.val());
@@ -304,7 +311,7 @@
     }
     root.innerHTML = `
       <div class="fb-header">
-        <div class="fb-title">우리 <span>가족보드</span></div>
+        <div class="fb-title">꿔니 <span>가족보드</span></div>
         <select class="fb-user-select" id="fb-switch-user"></select>
       </div>
       <div class="fb-tabs">${TABS.map(t=>{
@@ -353,7 +360,7 @@
   function renderNamePrompt(){
     return `
       <div style="padding:60px 24px; text-align:center;">
-        <div style="font-family:Georgia,serif; font-size:22px; font-weight:700; color:var(--sage-dark); margin-bottom:8px;">우리 가족보드</div>
+        <div style="font-family:Georgia,serif; font-size:22px; font-weight:700; color:var(--sage-dark); margin-bottom:8px;">꿔니 가족보드</div>
         <div style="font-size:13px; color:#8A8270; margin-bottom:24px;">이 폰의 사용자를 알려주세요</div>
         <input id="fb-name-input" class="fb-input" placeholder="이름 입력 (예: 아빠, 엄마, 은, 린)" style="text-align:center; margin-bottom:12px;"/>
         <button id="fb-name-go" class="fb-btn" style="width:100%;">시작하기</button>
@@ -570,7 +577,8 @@
 
   // ---------- 한줄일기 ----------
   function renderDiary(){
-    let list = state.diary.slice();
+    const [dy,dm] = state.diaryViewMonth.split('-').map(Number);
+    let list = state.diary.slice().filter(d=>monthOf(d.date)===state.diaryViewMonth);
     if(state.diaryFilter !== '전체') list = list.filter(d=>d.by===state.diaryFilter);
     list.sort((a,b)=> b.date.localeCompare(a.date) || b.ts-a.ts);
     return `
@@ -584,6 +592,11 @@
           <input class="fb-input" id="fb-diary-date" type="date" value="${todayStr()}" style="flex:1;"/>
           <button class="fb-btn" id="fb-diary-add">남기기</button>
         </div>
+      </div>
+      <div class="fb-month-nav">
+        <button data-diary-month="-1">◀</button>
+        <div class="fb-month-label">${dy}년 ${dm}월</div>
+        <button data-diary-month="1">▶</button>
       </div>
       <div class="fb-subtoggle">
         <button class="${state.diaryFilter==='전체'?'on':''}" data-diary-filter="전체">전체보기</button>
@@ -599,7 +612,7 @@
             <button class="fb-del" data-diary-del="${d.id}">✕</button>
           </div>
         </div>
-      `).join('') : `<div class="fb-empty">아직 남긴 한 줄이 없어요.</div>`}
+      `).join('') : `<div class="fb-empty">이 달에 남긴 한 줄이 없어요.</div>`}
     `;
   }
 
@@ -611,7 +624,7 @@
       <div class="fb-card" style="padding:14px;">
         <input class="fb-input" id="fb-note-content" placeholder="메모 내용" style="margin-bottom:8px; width:100%;"/>
         <div class="fb-row">
-          <input class="fb-input" id="fb-note-date" type="date" style="flex:1;"/>
+          <input class="fb-input" id="fb-note-date" type="date" value="${todayStr()}" style="flex:1;"/>
           <button class="fb-btn" id="fb-note-add">추가</button>
         </div>
       </div>
@@ -758,6 +771,16 @@
     });
 
     // 한줄일기
+    document.querySelectorAll('[data-diary-month]').forEach(el=>{
+      el.onclick = ()=>{
+        const delta = parseInt(el.dataset.diaryMonth);
+        let [y,m] = state.diaryViewMonth.split('-').map(Number);
+        m += delta;
+        if(m<1){ m=12; y--; } if(m>12){ m=1; y++; }
+        state.diaryViewMonth = y+'-'+String(m).padStart(2,'0');
+        render();
+      };
+    });
     document.querySelectorAll('[data-diary-filter]').forEach(el=>{
       el.onclick = ()=>{ state.diaryFilter = el.dataset.diaryFilter; render(); };
     });
@@ -795,6 +818,11 @@
   }
 
   loadAll();
+
+  // PWA 설치 가능하도록 서비스 워커 등록
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./service-worker.js').catch(e=>console.error('SW 등록 실패:', e));
+  }
 })();
 </script>
 </body>
