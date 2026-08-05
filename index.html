@@ -57,9 +57,14 @@
     font-family:Georgia,'Nanum Myeongjo',serif;
     font-size:22px; font-weight:700; color:var(--sage-dark);
     letter-spacing:-0.3px;
+    display:flex; align-items:baseline; flex-wrap:nowrap;
+    overflow:hidden; text-overflow:ellipsis;
+    flex:1; min-width:0; margin-right:10px;
   }
-  .fb-title span{color:var(--coral);}
+  .fb-title span{color:var(--coral); white-space:nowrap;}
+  .fb-live-clock{ font-size:14px; color:#8A8270; font-weight:500; margin-left:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .fb-user-select{
+    flex:0 0 auto;
     font-size:13px; padding:6px 10px; border-radius:20px;
     background:var(--card); border:1.5px solid var(--sage);
     color:var(--sage-dark); font-weight:600;
@@ -196,6 +201,7 @@
     {key:'goal', label:'🎯 목표'},
     {key:'diary', label:'📝 한줄일기'},
     {key:'note', label:'📌 메모'},
+    {key:'location', label:'📍 위치'},
   ];
   const CHILDREN = ['은','린'];
   const WRITERS = ['아빠','엄마','은','린'];
@@ -213,7 +219,6 @@
   const DOW = ['일','월','화','수','목','금','토'];
   const YELLOW_ID = 'YELLOW_CARD';
   const RED_ID = 'RED_CARD';
-  const PENALTY_START_DATE = '2026-08-04'; // 이 날짜부터만 자동 페널티(빨강4개↑, 완료5개↓) 적용
 
   let state = {
     me: null,
@@ -236,11 +241,24 @@
     goals: [],
     diary: [],
     notes: [],
+    locations: {}, // { 이름: {lat, lng, ts} }
   };
 
   const root = document.getElementById('fb-app');
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-  const todayStr = () => new Date().toISOString().slice(0,10);
+  const todayStr = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  };
+  function formatNow(){
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mm = String(d.getMinutes()).padStart(2,'0');
+    return `${d.getMonth()+1}월 ${d.getDate()}일(${DOW[d.getDay()]}) ${hh}:${mm}`;
+  }
   const monthOf = (dateStr) => dateStr.slice(0,7);
 
   // ---------- Firebase 연결 ----------
@@ -287,6 +305,7 @@
     state.goalChecks = data.goalChecks || {};
     state.diary = data.diary || [];
     state.notes = data.notes || [];
+    state.locations = data.locations || {};
     state.allowance = data.allowance || { missionDefs: [], dailyChecks:{}, balance:{}, redeemedTotal:{}, redeemHistory:[] };
     if(!state.allowance.missionDefs || !state.allowance.missionDefs.length){
       state.allowance.missionDefs = DEFAULT_MISSIONS.map(t=>({id:uid(), title:t}));
@@ -298,6 +317,7 @@
     if(!state.allowance.autoPenalty) state.allowance.autoPenalty = {};
     if(!state.allowance.closedDates) state.allowance.closedDates = {};
     if(!state.allowance.exemptDates) state.allowance.exemptDates = {};
+    if(!state.allowance.autoFailed) state.allowance.autoFailed = {};
     CHILDREN.forEach(c=>{
       if(state.allowance.balance[c]===undefined) state.allowance.balance[c]=0;
       if(state.allowance.redeemedTotal[c]===undefined) state.allowance.redeemedTotal[c]=0;
@@ -305,19 +325,7 @@
   }
 
   let firstLoad = true;
-  let autoSettleDone = false;
-  function autoSettleYesterday(){
-    if(autoSettleDone) return; // 세션당 한 번이면 충분 (이미 정산됐으면 settleDate가 알아서 아무것도 안 함)
-    const y = new Date();
-    y.setDate(y.getDate()-1);
-    const yDate = y.toISOString().slice(0,10);
-    if(!state.allowance.closedDates[yDate]){
-      settleDate(yDate);
-      touch('allowance');
-      persist();
-    }
-    autoSettleDone = true;
-  }
+  let cleanupDone = false;
   function loadAll(){
     state.me = loadPersonalSync('family-board-me', null);
     state.lastSeen = loadPersonalSync('family-board-lastseen', {});
@@ -330,11 +338,10 @@
     // Firebase 실시간 리스너: 가족 중 누구든 데이터가 바뀌면 즉시 이 화면에도 반영됨
     dbRef.on('value', (snapshot)=>{
       applySharedData(snapshot.val());
-      // 정산/예외 처리 안 된 날짜에 남은 페널티 잔여값은 매번 자동으로 원복 (다른 기기가 예전 버전이라도 계속 자가 복구됨)
-      const changed1 = clearLegacyPenalties();
-      const changed2 = clearUnsettledPenalties();
-      if(changed1 || changed2){ touch('allowance'); persist(); }
-      autoSettleYesterday(); // 자정이 지났는데 어제 날짜를 아무도 정리 안 했으면 자동 정산
+      // 예전 '자동 페널티' 기능이 남긴 잔여값을 정리 (여러 기기가 순차적으로 열 때마다 계속 자가 복구됨)
+      const changed = clearAllThresholdPenalties();
+      if(changed){ touch('allowance'); persist(); }
+      cleanupDone = true;
       render();
       firstLoad = false;
     }, (err)=>{
@@ -347,6 +354,7 @@
     await saveShared({
       members: state.members, meta: state.meta, bucketList: state.bucketList,
       goals: state.goals, goalChecks: state.goalChecks, diary: state.diary, notes: state.notes, allowance: state.allowance,
+      locations: state.locations,
     });
   }
   function touch(tab){ state.meta[tab] = Date.now(); }
@@ -363,22 +371,13 @@
     else if(p.kind==='note'){ state.notes = state.notes.filter(x=>x.id!==p.id); touch('note'); }
     await persist();
   }
-  // 하루 정산: 그날 아직 체크 안 된(빈칸) 미션은 전부 '실패(빨강)'로 확정 처리하고,
-  // 페널티를 최종 계산한 뒤 그 날짜를 잠가서 더 이상 체크 못 하게 함
+  // 하루 정리 — 점수 계산은 전혀 건드리지 않고, 그냥 그 날짜를 더 이상 체크 못 하게 잠그기만 함
   function settleDate(date){
-    CHILDREN.forEach(child=>{
-      if(!state.allowance.dailyChecks[date]) state.allowance.dailyChecks[date] = {};
-      state.allowance.missionDefs.forEach(ms=>{
-        if(!state.allowance.dailyChecks[date][ms.id]) state.allowance.dailyChecks[date][ms.id] = {};
-        if(!state.allowance.dailyChecks[date][ms.id][child]){
-          state.allowance.dailyChecks[date][ms.id][child] = 'fail';
-          state.allowance.balance[child] -= 1; // 빈칸 → 실패 전환 시에도 -1점 적용
-        }
-      });
-      recalcDailyPenalties(date, child);
-    });
     if(!state.allowance.closedDates) state.allowance.closedDates = {};
     state.allowance.closedDates[date] = true;
+  }
+  function undoSettleDate(date){
+    if(state.allowance.closedDates) delete state.allowance.closedDates[date];
   }
   function renderConfirmModal(){
     const msg = (state.confirmAction && state.confirmAction.message) || '정말로 진행하시겠습니까?';
@@ -405,7 +404,7 @@
     }
     root.innerHTML = `
       <div class="fb-header">
-        <div class="fb-title">꿔니 <span>가족보드</span></div>
+        <div class="fb-title">꿔니 <span>가족보드</span><span id="fb-live-clock" class="fb-live-clock">${formatNow()}</span></div>
         <select class="fb-user-select" id="fb-switch-user"></select>
       </div>
       <div class="fb-tabs">${TABS.map(t=>{
@@ -461,7 +460,7 @@
         state.confirmAction = null;
         if(a.type==='delete'){ await executeDelete(a); }
         else if(a.type==='settle'){ settleDate(a.date); touch('allowance'); await persist(); }
-        else if(a.type==='exempt'){ exemptDate(a.date); touch('allowance'); await persist(); }
+        else if(a.type==='undo-settle'){ undoSettleDate(a.date); touch('allowance'); await persist(); }
         render();
       };
     }
@@ -506,72 +505,31 @@
     });
     return sum;
   }
-  // 그날 빨간색(실패) 4개 이상 → -4점, 완료(파란색) 5개 이하 → -5점을 자동 계산해서
-  // 이전에 적용했던 만큼과의 차이만큼만 잔고에 반영 (중복 차감 방지)
-  // 단, PENALTY_START_DATE 이전 날짜이거나 '예외' 처리된 날짜는 항상 0으로 취급
-  function recalcDailyPenalties(date, child){
-    const bypass = date < PENALTY_START_DATE || !!(state.allowance.exemptDates && state.allowance.exemptDates[date]);
-    const missions = state.allowance.missionDefs;
-    let doneCount = 0, failCount = 0;
-    missions.forEach(ms=>{
-      const st = (state.allowance.dailyChecks[date] || {})[ms.id];
-      const v = st ? st[child] : undefined;
-      if(v==='done') doneCount++;
-      if(v==='fail') failCount++;
-    });
-    const newRed = (!bypass && failCount>=4) ? -4 : 0;
-    const newLow = (!bypass && doneCount<=5) ? -5 : 0;
-    if(!state.allowance.autoPenalty[date]) state.allowance.autoPenalty[date] = {};
-    const prev = state.allowance.autoPenalty[date][child] || {red:0, low:0};
-    const delta = (newRed - prev.red) + (newLow - prev.low);
-    state.allowance.balance[child] += delta;
-    state.allowance.autoPenalty[date][child] = {red:newRed, low:newLow};
-  }
-  // 하루를 '예외'로 표시 — 그날은 미완료 자동 페널티가 적용되지 않음 (카드는 그대로 적용됨)
-  function exemptDate(date){
-    if(!state.allowance.exemptDates) state.allowance.exemptDates = {};
-    state.allowance.exemptDates[date] = true;
-    CHILDREN.forEach(child => recalcDailyPenalties(date, child)); // 이미 적용됐던 페널티도 자동으로 되돌아감
-  }
-  // 이번 업데이트 이전(PENALTY_START_DATE 이전)에 잘못 깎인 자동 페널티를 한 번만 복구
-  function clearLegacyPenalties(){
+  // 예전에 있던 '완료 5개 이하/빨강 4개 이상 자동 페널티' 기능은 폐지됨.
+  // 그동안 이미 잔고에 반영돼 있던 페널티 금액을 한 번만 원복해서 깔끔하게 정리.
+  function clearAllThresholdPenalties(){
     let changed = false;
     const ap = state.allowance.autoPenalty || {};
     Object.keys(ap).forEach(date=>{
-      if(date < PENALTY_START_DATE){
-        CHILDREN.forEach(child=>{
-          const prev = ap[date][child];
-          if(prev && (prev.red || prev.low)){
-            state.allowance.balance[child] -= (prev.red + prev.low);
-            changed = true;
-          }
-        });
-        delete ap[date];
-        changed = true;
-      }
+      CHILDREN.forEach(child=>{
+        const prev = ap[date][child];
+        if(prev && (prev.red || prev.low)){
+          state.allowance.balance[child] -= (prev.red + prev.low);
+          changed = true;
+        }
+      });
+      delete ap[date];
+      changed = true;
     });
-    return changed;
-  }
-  // 정산(하루 정리)도 예외 처리도 안 한 날짜에 실수로 남아있는 페널티를 원복
-  // (페널티는 이제 '하루 정리' 버튼을 눌렀을 때만 계산되므로, 아직 정산 안 한 날에 남아있으면 안 됨)
-  function clearUnsettledPenalties(){
-    let changed = false;
-    const ap = state.allowance.autoPenalty || {};
-    Object.keys(ap).forEach(date=>{
-      const settled = state.allowance.closedDates && state.allowance.closedDates[date];
-      const exempt = state.allowance.exemptDates && state.allowance.exemptDates[date];
-      if(!settled && !exempt){
-        CHILDREN.forEach(child=>{
-          const prev = ap[date][child];
-          if(prev && (prev.red || prev.low)){
-            state.allowance.balance[child] -= (prev.red + prev.low);
-            changed = true;
-          }
-        });
-        delete ap[date];
-        changed = true;
-      }
-    });
+    // 예외(exempt)/자동실패 추적 개념은 폐지됐으니 잔재만 정리 (하루 정리 잠금은 계속 사용하므로 건드리지 않음)
+    if(state.allowance.exemptDates && Object.keys(state.allowance.exemptDates).length){
+      state.allowance.exemptDates = {};
+      changed = true;
+    }
+    if(state.allowance.autoFailed && Object.keys(state.allowance.autoFailed).length){
+      state.allowance.autoFailed = {};
+      changed = true;
+    }
     return changed;
   }
   function renderAllowance(){
@@ -585,7 +543,6 @@
     }
     const selDay = state.allowance.dailyChecks[state.viewingDate] || {};
     const dayClosed = !!(state.allowance.closedDates && state.allowance.closedDates[state.viewingDate]);
-    const dayExempt = !!(state.allowance.exemptDates && state.allowance.exemptDates[state.viewingDate]);
     return `
       <div class="fb-point-info-wrap">
         <button class="fb-point-info-btn" id="fb-point-info-btn">💰 포인트 → 금액 안내</button>
@@ -593,8 +550,7 @@
           <div class="fb-point-popup">
             <div>50P = 2,000원 / 100P = 5,000원</div>
             <div>이후 50P당 5,000원씩 추가 지급</div>
-            <div style="margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.2);">빨간색(실패) 4개 이상 → -4점</div>
-            <div>완료(파란색) 5개 이하 → -5점</div>
+            <div style="margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.2);">미션 완료 → +1점 / 실패 → -1점</div>
             <div>옐로카드 → -10점 / 레드카드 → -20점</div>
           </div>` : ''}
       </div>
@@ -623,17 +579,8 @@
       </div>
       <div class="fb-card" style="padding:12px;">
         ${dayClosed
-          ? `<div style="font-weight:800; color:var(--sage-dark); font-size:13px; text-align:center;">✅ ${state.viewingDate} 정산 완료 (더 이상 체크할 수 없어요)</div>`
-          : `
-          <div class="fb-row" style="gap:8px;">
-            <button class="fb-btn coral" id="fb-settle-btn" style="flex:1;">🔒 하루 정리</button>
-            ${dayExempt
-              ? `<div class="fb-btn" style="flex:1; background:var(--mustard); opacity:0.55; text-align:center;">🏖️ 예외됨</div>`
-              : `<button class="fb-btn" id="fb-exempt-btn" style="flex:1; background:var(--mustard);">🏖️ 예외</button>`
-            }
-          </div>
-          ${dayExempt? `<div style="margin-top:8px; font-size:11px; color:var(--sage-dark); text-align:center;">여행 등으로 미완료 페널티가 면제된 날이에요 (옐로·레드카드는 그대로 적용)</div>` : ''}
-          `
+          ? `<button class="fb-btn" id="fb-settle-undo-btn" style="width:100%; background:var(--sage);">✅ ${state.viewingDate} 정산 완료 (다시 누르면 취소)</button>`
+          : `<button class="fb-btn coral" id="fb-settle-btn" style="width:100%;">🔒 ${state.viewingDate} 하루 정리</button>`
         }
       </div>
       <div class="fb-add-bar">
@@ -893,12 +840,12 @@
     });
     const settleBtn = document.getElementById('fb-settle-btn');
     if(settleBtn) settleBtn.onclick = ()=>{
-      state.confirmAction = {type:'settle', date: state.viewingDate, message:`${state.viewingDate} 하루를 정리하시겠습니까? 미완료 항목은 실패 처리되고, 이 날짜는 더 이상 체크할 수 없어요.`};
+      state.confirmAction = {type:'settle', date: state.viewingDate, message:`${state.viewingDate} 하루를 정리하시겠습니까? 이후 이 날짜는 더 이상 체크할 수 없어요.`};
       render();
     };
-    const exemptBtn = document.getElementById('fb-exempt-btn');
-    if(exemptBtn) exemptBtn.onclick = ()=>{
-      state.confirmAction = {type:'exempt', date: state.viewingDate, message:`${state.viewingDate}를 예외로 처리하시겠습니까? 여행 등으로 못 챙긴 날, 미완료 페널티가 적용되지 않아요. (옐로·레드카드는 그대로 적용돼요)`};
+    const settleUndoBtn = document.getElementById('fb-settle-undo-btn');
+    if(settleUndoBtn) settleUndoBtn.onclick = ()=>{
+      state.confirmAction = {type:'undo-settle', date: state.viewingDate, message:`${state.viewingDate} 정산하기를 취소하시겠습니까?`};
       render();
     };
     document.querySelectorAll('[data-check]').forEach(el=>{
@@ -1067,6 +1014,12 @@
   }
 
   loadAll();
+
+  // 상단 시계를 1분마다 갱신 (전체 화면을 다시 그리지 않고 시계 부분만 업데이트)
+  setInterval(()=>{
+    const el = document.getElementById('fb-live-clock');
+    if(el) el.textContent = formatNow();
+  }, 30000);
 
   // PWA 설치 가능하도록 서비스 워커 등록
   if('serviceWorker' in navigator){
