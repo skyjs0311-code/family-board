@@ -201,7 +201,6 @@
     {key:'goal', label:'🎯 목표'},
     {key:'diary', label:'📝 한줄일기'},
     {key:'note', label:'📌 메모'},
-    {key:'location', label:'📍 위치'},
   ];
   const CHILDREN = ['은','린'];
   const WRITERS = ['아빠','엄마','은','린'];
@@ -241,7 +240,6 @@
     goals: [],
     diary: [],
     notes: [],
-    locations: {}, // { 이름: {lat, lng, ts} }
   };
 
   const root = document.getElementById('fb-app');
@@ -305,7 +303,6 @@
     state.goalChecks = data.goalChecks || {};
     state.diary = data.diary || [];
     state.notes = data.notes || [];
-    state.locations = data.locations || {};
     state.allowance = data.allowance || { missionDefs: [], dailyChecks:{}, balance:{}, redeemedTotal:{}, redeemHistory:[] };
     if(!state.allowance.missionDefs || !state.allowance.missionDefs.length){
       state.allowance.missionDefs = DEFAULT_MISSIONS.map(t=>({id:uid(), title:t}));
@@ -354,7 +351,6 @@
     await saveShared({
       members: state.members, meta: state.meta, bucketList: state.bucketList,
       goals: state.goals, goalChecks: state.goalChecks, diary: state.diary, notes: state.notes, allowance: state.allowance,
-      locations: state.locations,
     });
   }
   function touch(tab){ state.meta[tab] = Date.now(); }
