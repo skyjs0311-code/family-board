@@ -505,6 +505,21 @@
     });
     return sum;
   }
+  function monthlyDeducted(child, month){
+    let sum = 0;
+    Object.keys(state.allowance.dailyChecks).forEach(d=>{
+      if(monthOf(d)!==month) return;
+      const day = state.allowance.dailyChecks[d];
+      Object.keys(day).forEach(id=>{
+        const pair = day[id];
+        if(!pair) return;
+        if(id===YELLOW_ID){ if(pair[child]) sum += 10; }
+        else if(id===RED_ID){ if(pair[child]) sum += 20; }
+        else if(pair[child]==='fail'){ sum += 1; }
+      });
+    });
+    return sum;
+  }
   // 예전에 있던 '완료 5개 이하/빨강 4개 이상 자동 페널티' 기능은 폐지됨.
   // 그동안 이미 잔고에 반영돼 있던 페널티 금액을 한 번만 원복해서 깔끔하게 정리.
   function clearAllThresholdPenalties(){
@@ -562,13 +577,14 @@
       <div class="fb-kids-summary">
         ${CHILDREN.map(c=>{
           const earned = monthlyEarned(c, state.viewingMonth);
+          const deducted = monthlyDeducted(c, state.viewingMonth);
           const bal = state.allowance.balance[c];
           const {payout} = calcPayout(bal);
           return `
           <div class="fb-kid-card">
             <div class="fb-kid-name">${c}</div>
             <div class="fb-kid-stat">이번 달 획득 <b>${earned}P</b></div>
-            <div class="fb-kid-stat">미정산 <b>${bal}P</b></div>
+            <div class="fb-kid-stat">미정산 <b>${bal}P</b> ${deducted>0? `<span style="color:var(--coral); font-weight:700;">(-${deducted})</span>` : ''}</div>
             <div class="fb-kid-stat">누적 지급액 <b>${state.allowance.redeemedTotal[c].toLocaleString()}원</b></div>
             <button class="fb-btn small" style="margin-top:8px; width:100%;" data-redeem-child="${c}" ${payout<=0?'disabled':''}>${payout>0? `정산하기 (${payout.toLocaleString()}원)` : '정산 가능 포인트 없음'}</button>
           </div>`;
