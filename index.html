@@ -228,6 +228,7 @@
     diaryFilter: '전체',
     diaryViewMonth: null,
     confirmAction: null, // {type:'delete'|'settle', kind, id, date, message}
+    monthPicker: null, // {target:'allowance'|'goal'|'diary'|'note'}
     showPointInfo: false,
     goalView: null,
     goalViewMonth: null,
@@ -332,12 +333,10 @@
     state.goalViewMonth = monthOf(t);
     state.goalViewDate = t;
     state.diaryViewMonth = monthOf(t);
+    state.noteViewMonth = monthOf(t);
     // Firebase 실시간 리스너: 가족 중 누구든 데이터가 바뀌면 즉시 이 화면에도 반영됨
     dbRef.on('value', (snapshot)=>{
       applySharedData(snapshot.val());
-      // 예전 '자동 페널티' 기능이 남긴 잔여값을 정리 (여러 기기가 순차적으로 열 때마다 계속 자가 복구됨)
-      const changed = clearAllThresholdPenalties();
-      if(changed){ touch('allowance'); persist(); }
       cleanupDone = true;
       render();
       firstLoad = false;
@@ -385,6 +384,35 @@
           <div class="fb-modal-btns">
             <button class="fb-btn no" id="fb-modal-no">아니오</button>
             <button class="fb-btn" id="fb-modal-yes">예</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  function currentMonthFor(target){
+    if(target==='allowance') return state.viewingMonth;
+    if(target==='goal') return state.goalViewMonth;
+    if(target==='diary') return state.diaryViewMonth;
+    if(target==='note') return state.noteViewMonth;
+    return monthOf(todayStr());
+  }
+  function renderMonthPickerModal(){
+    const target = state.monthPicker.target;
+    const cur = currentMonthFor(target);
+    const [cy,cm] = cur.split('-').map(Number);
+    const years = []; for(let y=cy-2;y<=cy+2;y++) years.push(y);
+    return `
+      <div class="fb-modal-overlay" id="fb-mp-overlay">
+        <div class="fb-modal">
+          <button class="fb-modal-close" id="fb-mp-close">✕</button>
+          <div class="fb-modal-text">이동할 연/월을 선택하세요</div>
+          <div class="fb-row" style="justify-content:center; gap:8px; margin-bottom:18px;">
+            <select id="fb-mp-year" class="fb-input" style="flex:0 0 92px; text-align:center;">${years.map(y=>`<option value="${y}" ${y===cy?'selected':''}>${y}년</option>`).join('')}</select>
+            <select id="fb-mp-month" class="fb-input" style="flex:0 0 72px; text-align:center;">${Array.from({length:12},(_,i)=>i+1).map(mo=>`<option value="${mo}" ${mo===cm?'selected':''}>${mo}월</option>`).join('')}</select>
+          </div>
+          <div class="fb-modal-btns">
+            <button class="fb-btn no" id="fb-mp-cancel">취소</button>
+            <button class="fb-btn" id="fb-mp-go">이동</button>
           </div>
         </div>
       </div>
@@ -460,6 +488,35 @@
         render();
       };
     }
+    if(state.monthPicker){
+      root.insertAdjacentHTML('beforeend', renderMonthPickerModal());
+      const closeMp = ()=>{ state.monthPicker = null; render(); };
+      document.getElementById('fb-mp-close').onclick = closeMp;
+      document.getElementById('fb-mp-cancel').onclick = closeMp;
+      document.getElementById('fb-mp-overlay').onclick = (e)=>{ if(e.target.id==='fb-mp-overlay') closeMp(); };
+      document.getElementById('fb-mp-go').onclick = ()=>{
+        const target = state.monthPicker.target;
+        const y = parseInt(document.getElementById('fb-mp-year').value);
+        const mo = parseInt(document.getElementById('fb-mp-month').value);
+        const newMonth = y + '-' + String(mo).padStart(2,'0');
+        const dim = new Date(y, mo, 0).getDate();
+        if(target==='allowance'){
+          state.viewingMonth = newMonth;
+          const day = Math.min(parseInt(state.viewingDate.slice(8,10)), dim);
+          state.viewingDate = newMonth + '-' + String(day).padStart(2,'0');
+        } else if(target==='goal'){
+          state.goalViewMonth = newMonth;
+          const day = Math.min(parseInt(state.goalViewDate.slice(8,10)), dim);
+          state.goalViewDate = newMonth + '-' + String(day).padStart(2,'0');
+        } else if(target==='diary'){
+          state.diaryViewMonth = newMonth;
+        } else if(target==='note'){
+          state.noteViewMonth = newMonth;
+        }
+        state.monthPicker = null;
+        render();
+      };
+    }
   }
 
   function renderNamePrompt(){
@@ -516,32 +573,15 @@
     });
     return sum;
   }
-  // 예전에 있던 '완료 5개 이하/빨강 4개 이상 자동 페널티' 기능은 폐지됨.
-  // 그동안 이미 잔고에 반영돼 있던 페널티 금액을 한 번만 원복해서 깔끔하게 정리.
-  function clearAllThresholdPenalties(){
-    let changed = false;
-    const ap = state.allowance.autoPenalty || {};
-    Object.keys(ap).forEach(date=>{
-      CHILDREN.forEach(child=>{
-        const prev = ap[date][child];
-        if(prev && (prev.red || prev.low)){
-          state.allowance.balance[child] -= (prev.red + prev.low);
-          changed = true;
-        }
-      });
-      delete ap[date];
-      changed = true;
-    });
-    // 예외(exempt)/자동실패 추적 개념은 폐지됐으니 잔재만 정리 (하루 정리 잠금은 계속 사용하므로 건드리지 않음)
-    if(state.allowance.exemptDates && Object.keys(state.allowance.exemptDates).length){
-      state.allowance.exemptDates = {};
-      changed = true;
-    }
-    if(state.allowance.autoFailed && Object.keys(state.allowance.autoFailed).length){
-      state.allowance.autoFailed = {};
-      changed = true;
-    }
-    return changed;
+  // 그 달에 이미 정산(용돈 지급)한 포인트 합계 — 정산 시 어느 달 몫이었는지 forMonth에 기록해둠
+  function monthlyRedeemed(child, month){
+    return state.allowance.redeemHistory
+      .filter(h=> h.child===child && h.forMonth===month)
+      .reduce((s,h)=> s+h.points, 0);
+  }
+  // 그 달의 순수 미정산 포인트 = 획득 - 차감 - 이미 정산한 만큼. 달이 바뀌면 완전히 새로 시작됨(별도 저장 없이 매번 그 달 기록에서 계산).
+  function monthlyNet(child, month){
+    return monthlyEarned(child, month) - monthlyDeducted(child, month) - monthlyRedeemed(child, month);
   }
   function renderAllowance(){
     const [y,m] = state.viewingMonth.split('-').map(Number);
@@ -567,14 +607,14 @@
       </div>
       <div class="fb-month-nav">
         <button data-month="-1">◀</button>
-        <div class="fb-month-label">${y}년 ${m}월</div>
+        <div class="fb-month-label" data-open-month-picker="allowance" style="cursor:pointer;">${y}년 ${m}월</div>
         <button data-month="1">▶</button>
       </div>
       <div class="fb-kids-summary">
         ${CHILDREN.map(c=>{
           const earned = monthlyEarned(c, state.viewingMonth);
           const deducted = monthlyDeducted(c, state.viewingMonth);
-          const bal = state.allowance.balance[c];
+          const bal = monthlyNet(c, state.viewingMonth);
           const {payout} = calcPayout(bal);
           return `
           <div class="fb-kid-card">
@@ -691,7 +731,7 @@
     const monthNav = `
       <div class="fb-month-nav">
         <button data-goal-month="-1">◀</button>
-        <div class="fb-month-label">${gy}년 ${gm}월 달성률</div>
+        <div class="fb-month-label" data-open-month-picker="goal" style="cursor:pointer;">${gy}년 ${gm}월 달성률</div>
         <button data-goal-month="1">▶</button>
       </div>
     `;
@@ -767,7 +807,7 @@
       </div>
       <div class="fb-month-nav">
         <button data-diary-month="-1">◀</button>
-        <div class="fb-month-label">${dy}년 ${dm}월</div>
+        <div class="fb-month-label" data-open-month-picker="diary" style="cursor:pointer;">${dy}년 ${dm}월</div>
         <button data-diary-month="1">▶</button>
       </div>
       <div class="fb-subtoggle">
@@ -791,8 +831,15 @@
   // ---------- 메모/알림 ----------
   function renderNote(){
     const today = todayStr();
-    const sorted = state.notes.slice().sort((a,b)=> (a.date||'9999').localeCompare(b.date||'9999'));
+    const [ny,nm] = state.noteViewMonth.split('-').map(Number);
+    const filtered = state.notes.filter(n => !n.date || monthOf(n.date)===state.noteViewMonth);
+    const sorted = filtered.slice().sort((a,b)=> (a.date||'9999').localeCompare(b.date||'9999'));
     return `
+      <div class="fb-month-nav">
+        <button data-note-month="-1">◀</button>
+        <div class="fb-month-label" data-open-month-picker="note" style="cursor:pointer;">${ny}년 ${nm}월</div>
+        <button data-note-month="1">▶</button>
+      </div>
       <div class="fb-card" style="padding:14px;">
         <input class="fb-input" id="fb-note-content" placeholder="메모 내용" style="margin-bottom:8px; width:100%;"/>
         <div class="fb-row">
@@ -812,12 +859,18 @@
             <button class="fb-del" data-note-del="${n.id}">✕</button>
           </div>
         </div>`;
-      }).join('') : `<div class="fb-empty">등록된 메모가 없어요.</div>`}
+      }).join('') : `<div class="fb-empty">이 달엔 등록된 메모가 없어요.</div>`}
     `;
   }
 
   // ---------- 이벤트 바인딩 ----------
   function bindPanel(){
+    document.querySelectorAll('[data-open-month-picker]').forEach(el=>{
+      el.onclick = ()=>{
+        state.monthPicker = {target: el.dataset.openMonthPicker};
+        render();
+      };
+    });
     // 용돈미션
     const infoBtn = document.getElementById('fb-point-info-btn');
     if(infoBtn) infoBtn.onclick = ()=>{ state.showPointInfo = !state.showPointInfo; render(); };
@@ -873,10 +926,6 @@
         if(!cur) next = 'done';
         else if(cur==='done') next = 'fail';
         else next = undefined;
-        if(cur==='done') state.allowance.balance[child] -= 1;
-        if(cur==='fail') state.allowance.balance[child] += 1;
-        if(next==='done') state.allowance.balance[child] += 1;
-        if(next==='fail') state.allowance.balance[child] -= 1;
         if(next===undefined) delete dc[date][missionId][child];
         else dc[date][missionId][child] = next;
         touch('allowance'); await persist(); render();
@@ -887,26 +936,25 @@
         if(state.allowance.closedDates[state.viewingDate]) return;
         const [kind, child] = el.dataset.card.split(':');
         const id = kind==='yellow' ? YELLOW_ID : RED_ID;
-        const penalty = kind==='yellow' ? 10 : 20;
         const dc = state.allowance.dailyChecks;
         const date = state.viewingDate;
         if(!dc[date]) dc[date] = {};
         if(!dc[date][id]) dc[date][id] = {};
         const cur = !!dc[date][id][child];
         dc[date][id][child] = !cur;
-        state.allowance.balance[child] += cur ? penalty : -penalty;
         touch('allowance'); await persist(); render();
       };
     });
     document.querySelectorAll('[data-redeem-child]').forEach(el=>{
       el.onclick = async ()=>{
         const c = el.dataset.redeemChild;
-        const {payout, remainder} = calcPayout(state.allowance.balance[c]);
+        const month = state.viewingMonth;
+        const net = monthlyNet(c, month);
+        const {payout, remainder} = calcPayout(net);
         if(payout<=0) return;
-        const used = state.allowance.balance[c] - remainder;
+        const used = net - remainder;
         state.allowance.redeemedTotal[c] += payout;
-        state.allowance.balance[c] = remainder;
-        state.allowance.redeemHistory.push({child:c, date:todayStr(), points:used, amount:payout});
+        state.allowance.redeemHistory.push({child:c, date:todayStr(), points:used, amount:payout, forMonth: month});
         touch('allowance'); await persist(); render();
       };
     });
@@ -1009,6 +1057,16 @@
     });
 
     // 메모
+    document.querySelectorAll('[data-note-month]').forEach(el=>{
+      el.onclick = ()=>{
+        const delta = parseInt(el.dataset.noteMonth);
+        let [y,m] = state.noteViewMonth.split('-').map(Number);
+        m += delta;
+        if(m<1){ m=12; y--; } if(m>12){ m=1; y++; }
+        state.noteViewMonth = y+'-'+String(m).padStart(2,'0');
+        render();
+      };
+    });
     const addN = document.getElementById('fb-note-add');
     if(addN) addN.onclick = async ()=>{
       const c = document.getElementById('fb-note-content').value.trim();
