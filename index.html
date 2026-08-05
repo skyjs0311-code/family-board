@@ -357,6 +357,14 @@
     state.lastSeen[tab] = Date.now();
     savePersonalSync('family-board-lastseen', state.lastSeen);
   }
+  // 탭바 자체의 가로 스크롤 위치만 조정 (페이지 세로 스크롤에는 전혀 영향 없음)
+  function scrollActiveTabIntoView(){
+    const tabsEl = document.querySelector('.fb-tabs');
+    const activeBtn = document.querySelector('.fb-tab.active');
+    if(!tabsEl || !activeBtn) return;
+    const target = activeBtn.offsetLeft - (tabsEl.clientWidth - activeBtn.clientWidth) / 2;
+    tabsEl.scrollLeft = Math.max(0, target);
+  }
   async function executeDelete(p){
     if(!p) return;
     if(p.kind==='mission'){ state.allowance.missionDefs = state.allowance.missionDefs.filter(x=>x.id!==p.id); touch('allowance'); }
@@ -460,16 +468,11 @@
         state.activeTab = btn.dataset.tab;
         await markSeen(state.activeTab);
         render();
+        scrollActiveTabIntoView();
       };
     });
     // 최초 진입 시 현재 탭도 확인 처리
     markSeen(state.activeTab);
-
-    // 활성 탭 버튼이 탭바(가로 스크롤) 밖에 가려져 있으면 자동으로 보이는 위치까지 스크롤
-    const activeTabBtn = document.querySelector('.fb-tab.active');
-    if(activeTabBtn && typeof activeTabBtn.scrollIntoView === 'function'){
-      activeTabBtn.scrollIntoView({behavior:'auto', inline:'center', block:'nearest'});
-    }
 
     const panel = document.getElementById('fb-panel');
     if(state.activeTab==='allowance') panel.innerHTML = renderAllowance();
@@ -626,7 +629,7 @@
           <div class="fb-kid-card">
             <div class="fb-kid-name">${c}</div>
             <div class="fb-kid-stat">이번 달 획득 <b>${earned}P</b></div>
-            <div class="fb-kid-stat">미정산 <b>${bal}P</b> ${deducted>0? `<span style="color:var(--coral); font-weight:700;">(-${deducted})</span>` : ''}</div>
+            <div class="fb-kid-stat">최종획득 <b>${bal}P</b> ${deducted>0? `<span style="color:var(--coral); font-weight:700;">(-${deducted})</span>` : ''}</div>
             <div class="fb-kid-stat">누적 지급액 <b>${state.allowance.redeemedTotal[c].toLocaleString()}원</b></div>
             <button class="fb-btn small" style="margin-top:8px; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:${payout>0?'12px':'10.5px'};" data-redeem-child="${c}" ${payout<=0?'disabled':''}>${payout>0? `정산하기 (${payout.toLocaleString()}원)` : '정산 가능 포인트 없음'}</button>
           </div>`;
@@ -1122,6 +1125,7 @@
         state.activeTab = TABS[newIdx].key;
         markSeen(state.activeTab);
         render();
+        scrollActiveTabIntoView();
       }
     }, {passive:true});
   })();
