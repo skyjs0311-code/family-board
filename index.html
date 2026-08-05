@@ -64,7 +64,8 @@
   .fb-live-clock{ font-size:11px; color:#8A8270; font-weight:500; margin-left:8px; }
   .fb-user-select{
     flex:0 0 auto;
-    font-size:13px; padding:6px 10px; border-radius:20px;
+    font-size:11px; padding:4px 5px; border-radius:14px;
+    max-width:52px;
     background:var(--card); border:1.5px solid var(--sage);
     color:var(--sage-dark); font-weight:600;
   }
@@ -585,7 +586,7 @@
             <div class="fb-kid-stat">이번 달 획득 <b>${earned}P</b></div>
             <div class="fb-kid-stat">미정산 <b>${bal}P</b> ${deducted>0? `<span style="color:var(--coral); font-weight:700;">(-${deducted})</span>` : ''}</div>
             <div class="fb-kid-stat">누적 지급액 <b>${state.allowance.redeemedTotal[c].toLocaleString()}원</b></div>
-            <button class="fb-btn small" style="margin-top:8px; width:100%;" data-redeem-child="${c}" ${payout<=0?'disabled':''}>${payout>0? `정산하기 (${payout.toLocaleString()}원)` : '정산 가능 포인트 없음'}</button>
+            <button class="fb-btn small" style="margin-top:8px; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:${payout>0?'12px':'10.5px'};" data-redeem-child="${c}" ${payout<=0?'disabled':''}>${payout>0? `정산하기 (${payout.toLocaleString()}원)` : '정산 가능 포인트 없음'}</button>
           </div>`;
         }).join('')}
       </div>
