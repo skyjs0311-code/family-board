@@ -468,7 +468,7 @@
     // 활성 탭 버튼이 탭바(가로 스크롤) 밖에 가려져 있으면 자동으로 보이는 위치까지 스크롤
     const activeTabBtn = document.querySelector('.fb-tab.active');
     if(activeTabBtn && typeof activeTabBtn.scrollIntoView === 'function'){
-      activeTabBtn.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
+      activeTabBtn.scrollIntoView({behavior:'auto', inline:'center', block:'nearest'});
     }
 
     const panel = document.getElementById('fb-panel');
