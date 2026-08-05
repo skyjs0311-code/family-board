@@ -1091,6 +1091,35 @@
     if(el) el.textContent = formatNow();
   }, 30000);
 
+  // 좌우 스와이프로 탭 전환 (가로 스크롤 있는 영역-일자칩, 서브탭, 상단탭바-에서는 무시해서 그쪽 스크롤과 안 겹치게 함)
+  (function initSwipe(){
+    let startX = null, startY = null, startTarget = null;
+    root.addEventListener('touchstart', (e)=>{
+      if(e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      startTarget = e.target;
+    }, {passive:true});
+    root.addEventListener('touchend', (e)=>{
+      if(startX===null) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      startX = null;
+      if(startTarget && startTarget.closest && startTarget.closest('.fb-day-chips, .fb-subtoggle, .fb-tabs')) return;
+      if(Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.3) return; // 짧거나 세로 위주 제스처는 무시
+      if(state.confirmAction || state.monthPicker) return; // 모달 떠있을 땐 무시
+      const idx = TABS.findIndex(t=>t.key===state.activeTab);
+      let newIdx = idx;
+      if(dx < 0) newIdx = Math.min(TABS.length-1, idx+1); // 왼쪽으로 밀기 → 다음 탭
+      else newIdx = Math.max(0, idx-1); // 오른쪽으로 밀기 → 이전 탭
+      if(newIdx !== idx){
+        state.activeTab = TABS[newIdx].key;
+        markSeen(state.activeTab);
+        render();
+      }
+    }, {passive:true});
+  })();
+
   // PWA 설치 가능하도록 서비스 워커 등록
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('./service-worker.js').catch(e=>console.error('SW 등록 실패:', e));
